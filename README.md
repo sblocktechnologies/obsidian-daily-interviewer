@@ -15,7 +15,7 @@ An AI-powered daily reflection plugin that reads your periodic notes and conduct
 
 ### Manual Installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/sblocktechnologies/obsidian-interviewer/releases)
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/sblocktechnologies/obsidian-daily-interviewer/releases)
 2. Create a folder called `obsidian-daily-interviewer` in your vault's `.obsidian/plugins/` directory
 3. Copy the downloaded files into the new folder
 4. Restart Obsidian and enable the plugin in **Settings** → **Community plugins**
@@ -23,7 +23,7 @@ An AI-powered daily reflection plugin that reads your periodic notes and conduct
 ### From Source
 
 ```bash
-git clone https://github.com/sblocktechnologies/obsidian-interviewer.git
+git clone https://github.com/sblocktechnologies/obsidian-daily-interviewer.git
 cd obsidian-interviewer
 npm install
 npm run build
@@ -176,7 +176,7 @@ Contributions are welcome! Please:
 
 If you find this plugin useful, consider:
 - Starring the repository on GitHub
-- Reporting bugs or suggesting features via [Issues](https://github.com/sblocktechnologies/obsidian-interviewer/issues)
+- Reporting bugs or suggesting features via [Issues](https://github.com/sblocktechnologies/obsidian-daily-interviewer/issues)
 
 ## License
 
