@@ -1,0 +1,28 @@
+{
+  "name": "obsidian-interviewer",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sblocktechnologies/obsidian-interviewer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sblocktechnologies/obsidian-interviewer/issues"
+  },
+  "homepage": "https://github.com/sblocktechnologies/obsidian-interviewer#readme",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.27.2",
+    "obsidian": "^1.11.4",
+    "typescript": "^5.9.3"
+  }
+}

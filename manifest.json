@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-daily-interviewer",
+  "name": "Obsidian Daily Interviewer",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "An AI-powered daily interview plugin that reads your periodic notes and interviews you about your day.",
+  "author": "S-Block Technologies",
+  "authorUrl": "https://github.com/sblocktechnologies",
+  "isDesktopOnly": false
+}
