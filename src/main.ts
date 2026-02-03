@@ -19,6 +19,7 @@ interface ObsidianDailyInterviewerSettings {
   readMonthlyNote: boolean;
   readWeeklyNote: boolean;
   readDailyNote: boolean;
+  previousDailyNotesCount: number;
   customPrompt: string;
   monthlyNoteFormat: string;
   weeklyNoteFormat: string;
@@ -35,6 +36,7 @@ const DEFAULT_SETTINGS: ObsidianDailyInterviewerSettings = {
   readMonthlyNote: true,
   readWeeklyNote: true,
   readDailyNote: true,
+  previousDailyNotesCount: 0,
   customPrompt: "",
   monthlyNoteFormat: "YYYY-MM",
   weeklyNoteFormat: "YYYY-[W]WW",
@@ -161,6 +163,24 @@ export default class ObsidianDailyInterviewerPlugin extends Plugin {
       );
       if (dailyContent) {
         parts.push(`## Daily Note (${now.format(this.settings.dailyNoteFormat)})\n${dailyContent}`);
+      }
+    }
+
+    // Read previous daily notes if configured
+    if (this.settings.previousDailyNotesCount > 0) {
+      const previousNotes: string[] = [];
+      for (let i = 1; i <= this.settings.previousDailyNotesCount; i++) {
+        const pastDate = moment().subtract(i, 'days');
+        const pastContent = await this.getNoteContent(
+          this.settings.dailyNoteFolder,
+          pastDate.format(this.settings.dailyNoteFormat)
+        );
+        if (pastContent) {
+          previousNotes.push(`### ${pastDate.format("dddd, MMMM D, YYYY")} (${pastDate.format(this.settings.dailyNoteFormat)})\n${pastContent}`);
+        }
+      }
+      if (previousNotes.length > 0) {
+        parts.push(`## Previous Daily Notes\n\n${previousNotes.join("\n\n---\n\n")}`);
       }
     }
 
@@ -327,7 +347,12 @@ class InterviewView extends ItemView {
   }
 
   buildSystemPrompt(): string {
+    const now = moment();
+    const dateInfo = `Current date: ${now.format("dddd, MMMM D, YYYY")} at ${now.format("h:mm A")}`;
+
     let prompt = `You are a thoughtful and empathetic interviewer helping someone reflect on their day. Your goal is to help them process their experiences, celebrate wins, acknowledge challenges, and identify insights.
+
+${dateInfo}
 
 Be conversational, warm, and genuinely curious. Ask follow-up questions based on their responses. Keep your responses concise but meaningful.
 
@@ -638,6 +663,20 @@ class ObsidianDailyInterviewerSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.dailyNoteFormat)
           .onChange(async (value) => {
             this.plugin.settings.dailyNoteFormat = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Previous Daily Notes")
+      .setDesc("Number of previous daily notes to include as context (0 to disable)")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0, 14, 1)
+          .setValue(this.plugin.settings.previousDailyNotesCount)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.previousDailyNotesCount = value;
             await this.plugin.saveSettings();
           })
       );
