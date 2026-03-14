@@ -5,6 +5,7 @@ An AI-powered daily reflection plugin that reads your periodic notes and conduct
 ## Features
 
 - **Context-Aware Conversations** - Reads your daily, weekly, and monthly notes to personalize each interview
+- **Explicit Date Context** - Passes each note with clear headers and structured timing metadata so the AI can better keep events anchored to the right day or period
 - **Sidebar Integration** - Lives in the right sidebar so you can reference notes while chatting
 - **AI-Powered Reflection** - Uses OpenRouter to access top AI models (Claude, GPT, Gemini, and more)
 - **Automatic Summaries** - Generates a brief reflection summary and appends it to your daily note
@@ -116,9 +117,9 @@ Be direct and skip small talk.
 
 ## How It Works
 
-1. **Context Gathering** - When you start an interview, the plugin reads your current daily, weekly, and monthly notes (based on your configured paths and date formats)
+1. **Context Gathering** - When you start an interview, the plugin reads your current daily, weekly, and monthly notes (based on your configured paths and date formats) and packages each one with explicit headers plus structured metadata like the note type, period identifier, relative timing, and file path
 
-2. **AI Conversation** - The context is sent to the AI along with instructions to conduct a reflective interview. The AI references specific items from your notes.
+2. **AI Conversation** - The context is sent to the AI along with instructions to conduct a reflective interview. The AI references specific items from your notes while having clearer information about when each note was written.
 
 3. **Saving Results** - When you end the interview:
    - A summary is generated

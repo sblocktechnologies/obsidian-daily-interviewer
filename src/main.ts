@@ -69,6 +69,18 @@ interface Message {
   content: string;
 }
 
+interface NoteContextSectionOptions {
+  heading: string;
+  noteType: "monthly" | "weekly" | "daily";
+  periodIdentifier: string;
+  displayLabel: string;
+  relativeTiming: string;
+  filePath: string;
+  dateInterpretation: string;
+  content: string;
+  periodRange?: string;
+}
+
 export default class ObsidianDailyInterviewerPlugin extends Plugin {
   settings: ObsidianDailyInterviewerSettings;
 
@@ -133,62 +145,149 @@ export default class ObsidianDailyInterviewerPlugin extends Plugin {
   }
 
   async gatherContext(): Promise<string> {
-    const parts: string[] = [];
+    const sections: string[] = [];
     const now = moment();
 
     if (this.settings.readMonthlyNote) {
+      const monthId = now.format(this.settings.monthlyNoteFormat);
+      const monthDisplay = now.format("MMMM YYYY");
+      const monthStart = now.clone().startOf("month");
+      const monthEnd = now.clone().endOf("month");
       const monthlyContent = await this.getNoteContent(
         this.settings.monthlyNoteFolder,
-        now.format(this.settings.monthlyNoteFormat)
+        monthId
       );
+
       if (monthlyContent) {
-        parts.push(`## Monthly Note (${now.format(this.settings.monthlyNoteFormat)})\n${monthlyContent}`);
+        sections.push(
+          this.formatNoteContextSection({
+            heading: `Current Monthly Note — ${monthDisplay} (${monthId})`,
+            noteType: "monthly",
+            periodIdentifier: monthId,
+            displayLabel: monthDisplay,
+            relativeTiming: "current month",
+            periodRange: `${monthStart.format("dddd, MMMM D, YYYY")} to ${monthEnd.format("dddd, MMMM D, YYYY")}`,
+            filePath: this.buildNotePath(this.settings.monthlyNoteFolder, monthId),
+            dateInterpretation: `Relative time references in this note should be interpreted within ${monthDisplay}.`,
+            content: monthlyContent,
+          })
+        );
       }
     }
 
     if (this.settings.readWeeklyNote) {
+      const weekId = now.format(this.settings.weeklyNoteFormat);
+      const weekStart = now.clone().startOf("isoWeek");
+      const weekEnd = now.clone().endOf("isoWeek");
+      const weekDisplay = `${weekStart.format("dddd, MMMM D, YYYY")} to ${weekEnd.format("dddd, MMMM D, YYYY")}`;
       const weeklyContent = await this.getNoteContent(
         this.settings.weeklyNoteFolder,
-        now.format(this.settings.weeklyNoteFormat)
+        weekId
       );
+
       if (weeklyContent) {
-        parts.push(`## Weekly Note (${now.format(this.settings.weeklyNoteFormat)})\n${weeklyContent}`);
+        sections.push(
+          this.formatNoteContextSection({
+            heading: `Current Weekly Note — ${weekId}`,
+            noteType: "weekly",
+            periodIdentifier: weekId,
+            displayLabel: weekDisplay,
+            relativeTiming: "current week",
+            periodRange: weekDisplay,
+            filePath: this.buildNotePath(this.settings.weeklyNoteFolder, weekId),
+            dateInterpretation: "Relative time references in this note should be interpreted within the covered week above.",
+            content: weeklyContent,
+          })
+        );
       }
     }
 
     if (this.settings.readDailyNote) {
+      const dayId = now.format(this.settings.dailyNoteFormat);
+      const dayDisplay = now.format("dddd, MMMM D, YYYY");
       const dailyContent = await this.getNoteContent(
         this.settings.dailyNoteFolder,
-        now.format(this.settings.dailyNoteFormat)
+        dayId
       );
+
       if (dailyContent) {
-        parts.push(`## Daily Note (${now.format(this.settings.dailyNoteFormat)})\n${dailyContent}`);
+        sections.push(
+          this.formatNoteContextSection({
+            heading: `Current Daily Note — ${dayDisplay} (${dayId})`,
+            noteType: "daily",
+            periodIdentifier: dayId,
+            displayLabel: dayDisplay,
+            relativeTiming: "today",
+            filePath: this.buildNotePath(this.settings.dailyNoteFolder, dayId),
+            dateInterpretation: `Relative words inside this note such as "today", "yesterday", and "tomorrow" are written from the perspective of ${dayDisplay}.`,
+            content: dailyContent,
+          })
+        );
       }
     }
 
-    // Read previous daily notes if configured
     if (this.settings.previousDailyNotesCount > 0) {
-      const previousNotes: string[] = [];
       for (let i = 1; i <= this.settings.previousDailyNotesCount; i++) {
-        const pastDate = moment().subtract(i, 'days');
+        const pastDate = moment().subtract(i, "days");
+        const pastId = pastDate.format(this.settings.dailyNoteFormat);
+        const pastDisplay = pastDate.format("dddd, MMMM D, YYYY");
         const pastContent = await this.getNoteContent(
           this.settings.dailyNoteFolder,
-          pastDate.format(this.settings.dailyNoteFormat)
+          pastId
         );
+
         if (pastContent) {
-          previousNotes.push(`### ${pastDate.format("dddd, MMMM D, YYYY")} (${pastDate.format(this.settings.dailyNoteFormat)})\n${pastContent}`);
+          sections.push(
+            this.formatNoteContextSection({
+              heading: `Previous Daily Note — ${pastDisplay} (${pastId})`,
+              noteType: "daily",
+              periodIdentifier: pastId,
+              displayLabel: pastDisplay,
+              relativeTiming: i === 1 ? "1 day ago" : `${i} days ago`,
+              filePath: this.buildNotePath(this.settings.dailyNoteFolder, pastId),
+              dateInterpretation: `Relative words inside this note such as "today", "yesterday", and "tomorrow" are written from the perspective of ${pastDisplay}.`,
+              content: pastContent,
+            })
+          );
         }
-      }
-      if (previousNotes.length > 0) {
-        parts.push(`## Previous Daily Notes\n\n${previousNotes.join("\n\n---\n\n")}`);
       }
     }
 
-    return parts.join("\n\n---\n\n");
+    return sections.join("\n\n---\n\n");
+  }
+
+  buildNotePath(folder: string, filename: string): string {
+    return folder ? `${folder}/${filename}.md` : `${filename}.md`;
+  }
+
+  formatNoteContextSection(options: NoteContextSectionOptions): string {
+    const metadataLines = [
+      `- Note type: ${options.noteType}`,
+      `- Period identifier: ${options.periodIdentifier}`,
+      `- Display label: ${options.displayLabel}`,
+      `- Relative timing: ${options.relativeTiming}`,
+      `- File path: ${options.filePath}`,
+    ];
+
+    if (options.periodRange) {
+      metadataLines.push(`- Covered range: ${options.periodRange}`);
+    }
+
+    metadataLines.push(`- Date interpretation: ${options.dateInterpretation}`);
+
+    return [
+      `## ${options.heading}`,
+      "",
+      "### Metadata",
+      ...metadataLines,
+      "",
+      "### Note Content",
+      options.content.trim(),
+    ].join("\n");
   }
 
   async getNoteContent(folder: string, filename: string): Promise<string | null> {
-    const path = folder ? `${folder}/${filename}.md` : `${filename}.md`;
+    const path = this.buildNotePath(folder, filename);
     const file = this.app.vault.getAbstractFileByPath(path);
 
     if (file instanceof TFile) {
