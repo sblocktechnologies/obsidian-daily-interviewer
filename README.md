@@ -5,6 +5,7 @@ An AI-powered daily reflection plugin that reads your periodic notes and conduct
 ## Features
 
 - **Context-Aware Conversations** - Reads your daily, weekly, and monthly notes to personalize each interview
+- **Smart Linked-Note Expansion** - Can optionally inspect links in those notes and pull in a few additional notes when they seem relevant
 - **Explicit Date Context** - Passes each note with clear headers and structured timing metadata so the AI can better keep events anchored to the right day or period
 - **Sidebar Integration** - Lives in the right sidebar so you can reference notes while chatting
 - **AI-Powered Reflection** - Uses OpenRouter to access top AI models (Claude, GPT, Gemini, and more)
@@ -50,6 +51,8 @@ Open **Settings** → **Obsidian Daily Interviewer** and configure:
 | **Model** | AI model to use (Claude Opus 4.5 recommended) |
 | **Daily/Weekly/Monthly Note Folder** | Where your periodic notes are stored |
 | **Daily/Weekly/Monthly Note Format** | Date format matching your note filenames (Moment.js) |
+| **Expand Context with Linked Notes** | Lets the AI optionally request linked notes from your primary notes before the interview starts |
+| **Max Linked Notes to Load** | Caps how many linked notes can be pulled in for extra context |
 | **Interview Save Folder** | Where to save interview transcripts |
 | **Custom Prompt** | Optional guidance to focus the interviewer |
 
@@ -74,10 +77,11 @@ Open **Settings** → **Obsidian Daily Interviewer** and configure:
 ### During the Interview
 
 1. Click **New Interview** to begin
-2. The AI will recap what it noticed from your notes and ask an opening question
-3. Type your responses and press Enter (or click Send)
-4. The interview covers how you're feeling, wins, challenges, learnings, and what's ahead
-5. After 5-7 exchanges, the AI will naturally wrap up
+2. The AI reads your main notes first and may optionally pull in a few linked notes for extra context
+3. It then recaps what it noticed and asks an opening question
+4. Type your responses and press Enter (or click Send)
+5. The interview covers how you're feeling, wins, challenges, learnings, and what's ahead
+6. After 5-7 exchanges, the AI will naturally wrap up
 
 ### Ending the Interview
 
@@ -117,11 +121,13 @@ Be direct and skip small talk.
 
 ## How It Works
 
-1. **Context Gathering** - When you start an interview, the plugin reads your current daily, weekly, and monthly notes (based on your configured paths and date formats) and packages each one with explicit headers plus structured metadata like the note type, period identifier, relative timing, and file path
+1. **Primary Context Gathering** - When you start an interview, the plugin reads your current daily, weekly, and monthly notes (based on your configured paths and date formats) and packages each one with explicit headers plus structured metadata like the note type, period identifier, relative timing, and file path.
 
-2. **AI Conversation** - The context is sent to the AI along with instructions to conduct a reflective interview. The AI references specific items from your notes while having clearer information about when each note was written.
+2. **Optional Linked-Note Expansion** - If enabled, the AI first reviews that primary context and can request a small number of notes that are linked from those primary notes. Only those requested linked notes are pulled in as extra context.
 
-3. **Saving Results** - When you end the interview:
+3. **AI Conversation** - The combined context is sent to the AI along with instructions to conduct a reflective interview. The AI references specific items from your notes while having clearer information about when each note was written.
+
+4. **Saving Results** - When you end the interview:
    - A summary is generated
    - The full transcript is saved as a new note
    - Your daily note is updated with the summary and a link
@@ -129,6 +135,7 @@ Be direct and skip small talk.
 ## Privacy & Data
 
 - Your notes are sent to OpenRouter's API for processing
+- If linked-note expansion is enabled, a few additional linked notes may also be sent when the AI requests them
 - OpenRouter routes requests to your chosen model provider
 - No data is stored by this plugin beyond your vault
 - Review [OpenRouter's privacy policy](https://openrouter.ai/privacy) for details on data handling
