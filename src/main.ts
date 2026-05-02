@@ -14,6 +14,8 @@ import {
 
 const VIEW_TYPE_INTERVIEW = "obsidian-daily-interview-view";
 const MAX_LINKED_NOTE_CANDIDATES = 50;
+const INITIAL_INTERVIEW_USER_PROMPT =
+  "Please begin the daily reflection interview now. Briefly recap what stood out from the note context, then ask one opening question.";
 
 type ContextNoteType = "monthly" | "weekly" | "daily" | "linked";
 
@@ -38,7 +40,7 @@ interface ObsidianDailyInterviewerSettings {
 
 const DEFAULT_SETTINGS: ObsidianDailyInterviewerSettings = {
   openRouterApiKey: "",
-  model: "anthropic/claude-opus-4.5",
+  model: "openai/gpt-oss-120b:free",
   readMonthlyNote: true,
   readWeeklyNote: true,
   readDailyNote: true,
@@ -55,8 +57,40 @@ const DEFAULT_SETTINGS: ObsidianDailyInterviewerSettings = {
   interviewFolder: "Interviews",
 };
 
-const POPULAR_MODELS = [
-  // Top-tier frontier models
+const FREE_MODELS = [
+  "openai/gpt-oss-120b:free",
+  "openai/gpt-oss-20b:free",
+  "openrouter/free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-nano-30b-a3b:free",
+  "z-ai/glm-4.5-air:free",
+  "poolside/laguna-m.1:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemma-4-31b-it:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "google/gemma-3-27b-it:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "qwen/qwen3-coder:free",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+  "nvidia/nemotron-nano-12b-v2-vl:free",
+  "nvidia/nemotron-nano-9b-v2:free",
+  "inclusionai/ling-2.6-1t:free",
+  "tencent/hy3-preview:free",
+  "minimax/minimax-m2.5:free",
+  "nousresearch/hermes-3-llama-3.1-405b:free",
+  "poolside/laguna-xs.2:free",
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+  "google/gemma-3-12b-it:free",
+  "google/gemma-3-4b-it:free",
+  "google/gemma-3n-e4b-it:free",
+  "google/gemma-3n-e2b-it:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+  "liquid/lfm-2.5-1.2b-thinking:free",
+  "liquid/lfm-2.5-1.2b-instruct:free",
+  "baidu/qianfan-ocr-fast:free",
+];
+
+const PAID_MODELS = [
   "anthropic/claude-opus-4.5",
   "anthropic/claude-sonnet-4.5",
   "openai/gpt-5.1",
@@ -64,7 +98,6 @@ const POPULAR_MODELS = [
   "google/gemini-2.5-pro-preview",
   "google/gemini-2.5-flash",
   "x-ai/grok-4",
-  // Great value / specialized models
   "deepseek/deepseek-chat",
   "anthropic/claude-sonnet-4",
   "meta-llama/llama-3.3-70b-instruct",
@@ -72,9 +105,41 @@ const POPULAR_MODELS = [
   "mistralai/mistral-large-2",
 ];
 
+const POPULAR_MODELS = [...FREE_MODELS, ...PAID_MODELS];
+
 interface Message {
   role: "system" | "user" | "assistant";
   content: string;
+  hidden?: boolean;
+}
+
+interface OpenRouterErrorPayload {
+  message?: string;
+  code?: string | number;
+  type?: string;
+}
+
+interface OpenRouterChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+  error?: OpenRouterErrorPayload;
+}
+
+class OpenRouterApiError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "OpenRouterApiError";
+    this.status = status;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 interface NoteContextSectionOptions {
@@ -761,9 +826,46 @@ Use exact paths from the available linked notes list.`,
   }
 
   async requestChatCompletion(messages: Message[]): Promise<string> {
+    const apiMessages = messages.map(({ role, content }) => ({ role, content }));
+    const modelsToTry = this.getOpenRouterModelCandidates(this.settings.model);
+    let lastError: unknown = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const content = await this.requestChatCompletionWithModel(apiMessages, model);
+
+        if (model !== this.settings.model) {
+          const previousModel = this.settings.model;
+          this.settings.model = model;
+          await this.saveSettings();
+          console.warn(
+            `OpenRouter model ${previousModel} failed. Switched to fallback model ${model}.`
+          );
+          new Notice(`Switched AI model to ${model} because ${previousModel} failed.`, 8000);
+        }
+
+        return content;
+      } catch (error) {
+        lastError = error;
+        console.warn(`OpenRouter model ${model} failed:`, error);
+
+        if (!this.shouldTryOpenRouterFallback(error)) {
+          break;
+        }
+      }
+    }
+
+    throw lastError ?? new OpenRouterApiError("OpenRouter request failed.");
+  }
+
+  async requestChatCompletionWithModel(
+    messages: Array<Pick<Message, "role" | "content">>,
+    model: string
+  ): Promise<string> {
     const response = await requestUrl({
       url: "https://openrouter.ai/api/v1/chat/completions",
       method: "POST",
+      throw: false,
       headers: {
         Authorization: `Bearer ${this.settings.openRouterApiKey}`,
         "Content-Type": "application/json",
@@ -771,12 +873,127 @@ Use exact paths from the available linked notes list.`,
         "X-Title": "Obsidian Daily Interviewer",
       },
       body: JSON.stringify({
-        model: this.settings.model,
+        model,
         messages,
+        max_tokens: 800,
       }),
     });
 
-    return response.json.choices[0].message.content;
+    const responseJson = response.json as unknown;
+    const responseText = response.text ?? "";
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new OpenRouterApiError(
+        this.extractOpenRouterErrorMessage(
+          responseJson,
+          responseText,
+          this.getOpenRouterFallbackErrorMessage(response.status)
+        ),
+        response.status
+      );
+    }
+
+    const completion = responseJson as OpenRouterChatCompletionResponse;
+    const content = completion.choices?.[0]?.message?.content;
+
+    if (typeof content !== "string" || !content.trim()) {
+      throw new OpenRouterApiError(
+        this.extractOpenRouterErrorMessage(
+          responseJson,
+          responseText,
+          "OpenRouter returned an empty assistant message."
+        ),
+        response.status >= 200 && response.status < 300 ? 502 : response.status
+      );
+    }
+
+    return content;
+  }
+
+  getOpenRouterModelCandidates(preferredModel: string): string[] {
+    const preferred = preferredModel.trim();
+    const fallbackModels = [
+      "openai/gpt-oss-120b:free",
+      "openai/gpt-oss-20b:free",
+      "openrouter/free",
+      "nvidia/nemotron-3-super-120b-a12b:free",
+    ];
+
+    return Array.from(new Set([preferred, ...fallbackModels].filter(Boolean)));
+  }
+
+  shouldTryOpenRouterFallback(error: unknown): boolean {
+    if (!(error instanceof OpenRouterApiError)) {
+      return true;
+    }
+
+    if (error.status === 401 || error.status === 403) {
+      return false;
+    }
+
+    if (
+      error.status === 402 ||
+      error.status === 404 ||
+      error.status === 408 ||
+      error.status === 409 ||
+      error.status === 429 ||
+      (typeof error.status === "number" && error.status >= 500)
+    ) {
+      return true;
+    }
+
+    const message = error.message.toLowerCase();
+    return /provider|model|endpoint|rate|overload|capacity|temporar|timeout|unavailable/.test(
+      message
+    );
+  }
+
+  extractOpenRouterErrorMessage(
+    responseJson: unknown,
+    responseText: string,
+    fallbackMessage: string
+  ): string {
+    if (isRecord(responseJson)) {
+      const error = responseJson.error;
+      if (isRecord(error)) {
+        const message = error.message;
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      }
+
+      const message = responseJson.message;
+      if (typeof message === "string" && message.trim()) {
+        return message.trim();
+      }
+    }
+
+    const trimmedText = responseText.trim();
+    if (trimmedText) {
+      return trimmedText.slice(0, 500);
+    }
+
+    return fallbackMessage;
+  }
+
+  getOpenRouterFallbackErrorMessage(status: number): string {
+    if (status === 402) {
+      return "OpenRouter returned HTTP 402. Your API key is valid, but the selected model requires credits or your balance is too low. Add OpenRouter credits or switch to a free or cheaper model.";
+    }
+
+    return `OpenRouter returned HTTP ${status}.`;
+  }
+
+  getReadableErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim();
+    }
+
+    if (typeof error === "string" && error.trim()) {
+      return error.trim();
+    }
+
+    return "Unknown error.";
   }
 
   async saveInterview(conversation: Message[]): Promise<string> {
@@ -796,6 +1013,10 @@ Use exact paths from the available linked notes list.`,
     let content = `# Daily Interview - ${now.format("MMMM D, YYYY h:mm A")}\n\n`;
 
     for (const msg of conversation) {
+      if (msg.hidden) {
+        continue;
+      }
+
       if (msg.role === "user") {
         content += `**You:** ${msg.content}\n\n`;
       } else if (msg.role === "assistant") {
@@ -949,9 +1170,19 @@ class InterviewView extends ItemView {
 
       const systemPrompt = this.buildSystemPrompt();
       this.messages.push({ role: "system", content: systemPrompt });
+      this.messages.push({
+        role: "user",
+        content: INITIAL_INTERVIEW_USER_PROMPT,
+        hidden: true,
+      });
       this.interviewStarted = true;
 
-      await this.getAIResponse();
+      const started = await this.getAIResponse();
+      if (!started) {
+        this.interviewStarted = false;
+        this.messages = [];
+        this.showWelcome();
+      }
     } catch (error) {
       loadingEl.remove();
       console.error("Error preparing interview:", error);
@@ -1011,7 +1242,7 @@ After 5-7 exchanges, naturally wrap up the conversation and provide a brief summ
     await this.getAIResponse();
   }
 
-  async getAIResponse() {
+  async getAIResponse(): Promise<boolean> {
     this.isLoading = true;
     const loadingEl = this.chatContainer.createDiv({ cls: "loading-message" });
     loadingEl.textContent = "Thinking...";
@@ -1023,13 +1254,18 @@ After 5-7 exchanges, naturally wrap up the conversation and provide a brief summ
       loadingEl.remove();
       this.addMessageToChat("assistant", assistantMessage);
       this.messages.push({ role: "assistant", content: assistantMessage });
+      return true;
     } catch (error) {
       loadingEl.remove();
       console.error("OpenRouter API error:", error);
-      new Notice("Error communicating with AI. Check your API key and try again.");
+      new Notice(
+        `Error communicating with AI: ${this.plugin.getReadableErrorMessage(error)}`,
+        10000
+      );
+      return false;
+    } finally {
+      this.isLoading = false;
     }
-
-    this.isLoading = false;
   }
 
   addMessageToChat(role: "user" | "assistant", content: string) {
@@ -1130,7 +1366,7 @@ class ObsidianDailyInterviewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Model")
-      .setDesc("Select the AI model to use for interviews")
+      .setDesc("Select the AI model to use for interviews. Current free OpenRouter models are listed first.")
       .addDropdown((dropdown) => {
         POPULAR_MODELS.forEach((model) => {
           dropdown.addOption(model, model);
@@ -1141,6 +1377,24 @@ class ObsidianDailyInterviewerSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+
+    new Setting(containerEl)
+      .setName("Custom OpenRouter Model ID")
+      .setDesc(
+        "Optional: enter any OpenRouter model ID. Use a :free model if you do not have credits."
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder("provider/model or provider/model:free")
+          .setValue(this.plugin.settings.model)
+          .onChange(async (value) => {
+            const trimmedValue = value.trim();
+            if (trimmedValue) {
+              this.plugin.settings.model = trimmedValue;
+              await this.plugin.saveSettings();
+            }
+          })
+      );
 
     containerEl.createEl("h3", { text: "Note Sources" });
 
